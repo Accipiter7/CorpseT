@@ -20,7 +20,6 @@
 #include <linux/sched.h>
 #include <linux/sched/loadavg.h>
 #include <linux/math64.h>
-#include <linux/module.h>
 
 /*
  * Please note when changing the tuning values:
@@ -472,7 +471,6 @@ static struct cpuidle_governor menu_governor = {
 	.enable =	menu_enable_device,
 	.select =	menu_select,
 	.reflect =	menu_reflect,
-	.owner =	THIS_MODULE,
 };
 
 /**
