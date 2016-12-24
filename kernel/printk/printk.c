@@ -47,7 +47,7 @@
 #include <linux/uio.h>
 #include <linux/sched/clock.h>
 
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 #include <asm/sections.h>
 
 #define CREATE_TRACE_POINTS

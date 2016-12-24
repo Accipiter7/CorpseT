@@ -39,7 +39,7 @@
 #include <linux/clockchips.h>
 #include <linux/gfp.h>
 #include <linux/kprobes.h>
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 #include <asm/facility.h>
 #include <asm/delay.h>
 #include <asm/div64.h>
