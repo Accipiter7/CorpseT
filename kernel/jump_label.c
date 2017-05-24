@@ -15,6 +15,7 @@
 #include <linux/static_key.h>
 #include <linux/jump_label_ratelimit.h>
 #include <linux/bug.h>
+#include <linux/cpu.h>
 
 #ifdef HAVE_JUMP_LABEL
 
@@ -102,6 +103,7 @@ void static_key_slow_inc(struct static_key *key)
 			return;
 	}
 
+	cpus_read_lock();
 	jump_label_lock();
 	if (atomic_read(&key->enabled) == 0) {
 		atomic_set(&key->enabled, -1);
@@ -111,6 +113,7 @@ void static_key_slow_inc(struct static_key *key)
 		atomic_inc(&key->enabled);
 	}
 	jump_label_unlock();
+	cpus_read_unlock();
 }
 EXPORT_SYMBOL_GPL(static_key_slow_inc);
 
@@ -168,6 +171,7 @@ EXPORT_SYMBOL_GPL(static_key_disable);
 static void __static_key_slow_dec(struct static_key *key,
 		unsigned long rate_limit, struct delayed_work *work)
 {
+	cpus_read_lock();
 	/*
 	 * The negative count check is valid even when a negative
 	 * key->enabled is in use by static_key_slow_inc(); a
@@ -178,6 +182,7 @@ static void __static_key_slow_dec(struct static_key *key,
 	if (!atomic_dec_and_mutex_lock(&key->enabled, &jump_label_mutex)) {
 		WARN(atomic_read(&key->enabled) < 0,
 		     "jump label: negative count!\n");
+		cpus_read_unlock();
 		return;
 	}
 
@@ -188,6 +193,7 @@ static void __static_key_slow_dec(struct static_key *key,
 		jump_label_update(key);
 	}
 	jump_label_unlock();
+	cpus_read_unlock();
 }
 
 static void jump_label_update_timeout(struct work_struct *work)
@@ -363,6 +369,7 @@ void __init jump_label_init(void)
 	if (static_key_initialized)
 		return;
 
+	cpus_read_lock();
 	jump_label_lock();
 	jump_label_sort_entries(iter_start, iter_stop);
 
@@ -382,6 +389,7 @@ void __init jump_label_init(void)
 	}
 	static_key_initialized = true;
 	jump_label_unlock();
+	cpus_read_unlock();
 }
 
 #ifdef CONFIG_MODULES
@@ -619,27 +627,27 @@ jump_label_module_notify(struct notifier_block *self, unsigned long val,
 	struct module *mod = data;
 	int ret = 0;
 
+	cpus_read_lock();
+	jump_label_lock();
+
 	switch (val) {
 	case MODULE_STATE_COMING:
-		jump_label_lock();
 		ret = jump_label_add_module(mod);
 		if (ret) {
 			WARN(1, "Failed to allocatote memory: jump_label may not work properly.\n");
 			jump_label_del_module(mod);
 		}
-		jump_label_unlock();
 		break;
 	case MODULE_STATE_GOING:
-		jump_label_lock();
 		jump_label_del_module(mod);
-		jump_label_unlock();
 		break;
 	case MODULE_STATE_LIVE:
-		jump_label_lock();
 		jump_label_invalidate_module_init(mod);
-		jump_label_unlock();
 		break;
 	}
+
+	jump_label_unlock();
+	cpus_read_unlock();
 
 	return notifier_from_errno(ret);
 }
