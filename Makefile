@@ -669,6 +669,12 @@ ifdef CONFIG_LD_LLD
 LD		:= $(LDLLD)
 endif
 
+ifeq ($(cc-name),clang)
+ifeq ($(ld-name),lld)
+KBUILD_CFLAGS += -fuse-ld=lld
+endif
+endif
+
 ifdef CONFIG_LTO_CLANG
 # use GNU gold with LLVMgold or LLD for LTO linking, and LD for vmlinux_link
 ifeq ($(ld-name),gold)
