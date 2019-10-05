@@ -86,16 +86,6 @@ SCHED_FEAT(ATTACH_AGE_LOAD, true)
 SCHED_FEAT(UTIL_EST, true)
 
 /*
- * Energy aware scheduling. Use platform energy model to guide scheduling
- * decisions optimizing for energy efficiency.
- */
-#ifdef CONFIG_DEFAULT_USE_ENERGY_AWARE
-SCHED_FEAT(ENERGY_AWARE, true)
-#else
-SCHED_FEAT(ENERGY_AWARE, false)
-#endif
-
-/*
  * Enforce the priority of candidates selected by find_best_target()
  * ON: If the target CPU saves any energy, use that.
  * OFF: Use whichever of target or backup saves most.
