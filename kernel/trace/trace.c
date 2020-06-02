@@ -235,7 +235,7 @@ static int __init set_tracepoint_printk(char *str)
 }
 __setup("tp_printk", set_tracepoint_printk);
 
-unsigned long long ns2usecs(cycle_t nsec)
+unsigned long long ns2usecs(u64 nsec)
 {
 	nsec += 500;
 	do_div(nsec, 1000);
@@ -575,7 +575,7 @@ int trace_pid_write(struct trace_pid_list *filtered_pids,
 	return read;
 }
 
-static cycle_t buffer_ftrace_now(struct trace_buffer *buf, int cpu)
+static u64 buffer_ftrace_now(struct trace_buffer *buf, int cpu)
 {
 	u64 ts;
 
@@ -589,7 +589,7 @@ static cycle_t buffer_ftrace_now(struct trace_buffer *buf, int cpu)
 	return ts;
 }
 
-cycle_t ftrace_now(int cpu)
+u64 ftrace_now(int cpu)
 {
 	return buffer_ftrace_now(&global_trace.trace_buffer, cpu);
 }
@@ -4227,22 +4227,22 @@ static const char readme_msg[] =
 	"\t\t\t  traces\n"
 #endif
 #endif /* CONFIG_STACK_TRACER */
-#ifdef CONFIG_KPROBE_EVENT
+#ifdef CONFIG_KPROBE_EVENTS
 	"  kprobe_events\t\t- Add/remove/show the kernel dynamic events\n"
 	"\t\t\t  Write into this file to define/undefine new trace events.\n"
 #endif
-#ifdef CONFIG_UPROBE_EVENT
+#ifdef CONFIG_UPROBE_EVENTS
 	"  uprobe_events\t\t- Add/remove/show the userspace dynamic events\n"
 	"\t\t\t  Write into this file to define/undefine new trace events.\n"
 #endif
-#if defined(CONFIG_KPROBE_EVENT) || defined(CONFIG_UPROBE_EVENT)
+#if defined(CONFIG_KPROBE_EVENTS) || defined(CONFIG_UPROBE_EVENTS)
 	"\t  accepts: event-definitions (one definition per line)\n"
 	"\t   Format: p|r[:[<group>/]<event>] <place> [<args>]\n"
 	"\t           -:[<group>/]<event>\n"
-#ifdef CONFIG_KPROBE_EVENT
+#ifdef CONFIG_KPROBE_EVENTS
 	"\t    place: [<module>:]<symbol>[+<offset>]|<memaddr>\n"
 #endif
-#ifdef CONFIG_UPROBE_EVENT
+#ifdef CONFIG_UPROBE_EVENTS
 	"\t    place: <path>:<offset>\n"
 #endif
 	"\t     args: <name>=fetcharg[:type]\n"
@@ -7188,19 +7188,6 @@ static int allocate_trace_buffers(struct trace_array *tr, int size)
 	 */
 	allocate_snapshot = false;
 #endif
-
-	/*
-	 * Because of some magic with the way alloc_percpu() works on
-	 * x86_64, we need to synchronize the pgd of all the tables,
-	 * otherwise the trace events that happen in x86_64 page fault
-	 * handlers can't cope with accessing the chance that a
-	 * alloc_percpu()'d memory might be touched in the page fault trace
-	 * event. Oh, and we need to audit all other alloc_percpu() and vmalloc()
-	 * calls in tracing, because something might get triggered within a
-	 * page fault trace event!
-	 */
-	vmalloc_sync_mappings();
-
 	return 0;
 }
 

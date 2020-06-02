@@ -52,7 +52,7 @@
 #include <asm/sections.h>
 #include <asm/cacheflush.h>
 #include <asm/errno.h>
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 
 #define KPROBE_HASH_BITS 6
 #define KPROBE_TABLE_SIZE (1 << KPROBE_HASH_BITS)
@@ -149,9 +149,11 @@ kprobe_opcode_t *__get_insn_slot(struct kprobe_insn_cache *c)
 	struct kprobe_insn_page *kip;
 	kprobe_opcode_t *slot = NULL;
 
+	/* Since the slot array is not protected by rcu, we need a mutex */
 	mutex_lock(&c->mutex);
  retry:
-	list_for_each_entry(kip, &c->pages, list) {
+	rcu_read_lock();
+	list_for_each_entry_rcu(kip, &c->pages, list) {
 		if (kip->nused < slots_per_page(c)) {
 			int i;
 			for (i = 0; i < slots_per_page(c); i++) {
@@ -159,6 +161,7 @@ kprobe_opcode_t *__get_insn_slot(struct kprobe_insn_cache *c)
 					kip->slot_used[i] = SLOT_USED;
 					kip->nused++;
 					slot = kip->insns + (i * c->insn_size);
+					rcu_read_unlock();
 					goto out;
 				}
 			}
@@ -167,6 +170,7 @@ kprobe_opcode_t *__get_insn_slot(struct kprobe_insn_cache *c)
 			WARN_ON(1);
 		}
 	}
+	rcu_read_unlock();
 
 	/* If there are any garbage slots, collect it and try again. */
 	if (c->nr_garbage && collect_garbage_slots(c) == 0)
@@ -193,7 +197,7 @@ kprobe_opcode_t *__get_insn_slot(struct kprobe_insn_cache *c)
 	kip->nused = 1;
 	kip->ngarbage = 0;
 	kip->cache = c;
-	list_add(&kip->list, &c->pages);
+	list_add_rcu(&kip->list, &c->pages);
 	slot = kip->insns;
 out:
 	mutex_unlock(&c->mutex);
@@ -213,7 +217,8 @@ static int collect_one_slot(struct kprobe_insn_page *kip, int idx)
 		 * next time somebody inserts a probe.
 		 */
 		if (!list_is_singular(&kip->list)) {
-			list_del(&kip->list);
+			list_del_rcu(&kip->list);
+			synchronize_rcu();
 			kip->cache->free(kip->insns);
 			kfree(kip);
 		}
@@ -235,8 +240,7 @@ static int collect_garbage_slots(struct kprobe_insn_cache *c)
 			continue;
 		kip->ngarbage = 0;	/* we will collect all garbages */
 		for (i = 0; i < slots_per_page(c); i++) {
-			if (kip->slot_used[i] == SLOT_DIRTY &&
-			    collect_one_slot(kip, i))
+			if (kip->slot_used[i] == SLOT_DIRTY && collect_one_slot(kip, i))
 				break;
 		}
 	}
@@ -248,27 +252,58 @@ void __free_insn_slot(struct kprobe_insn_cache *c,
 		      kprobe_opcode_t *slot, int dirty)
 {
 	struct kprobe_insn_page *kip;
+	long idx;
 
 	mutex_lock(&c->mutex);
-	list_for_each_entry(kip, &c->pages, list) {
-		long idx = ((long)slot - (long)kip->insns) /
-				(c->insn_size * sizeof(kprobe_opcode_t));
-		if (idx >= 0 && idx < slots_per_page(c)) {
-			WARN_ON(kip->slot_used[idx] != SLOT_USED);
-			if (dirty) {
-				kip->slot_used[idx] = SLOT_DIRTY;
-				kip->ngarbage++;
-				if (++c->nr_garbage > slots_per_page(c))
-					collect_garbage_slots(c);
-			} else
-				collect_one_slot(kip, idx);
+	rcu_read_lock();
+	list_for_each_entry_rcu(kip, &c->pages, list) {
+		idx = ((long)slot - (long)kip->insns) /
+			(c->insn_size * sizeof(kprobe_opcode_t));
+		if (idx >= 0 && idx < slots_per_page(c))
 			goto out;
+	}
+	/* Could not find this slot. */
+	WARN_ON(1);
+	kip = NULL;
+out:
+	rcu_read_unlock();
+	/* Mark and sweep: this may sleep */
+	if (kip) {
+		/* Check double free */
+		WARN_ON(kip->slot_used[idx] != SLOT_USED);
+		if (dirty) {
+			kip->slot_used[idx] = SLOT_DIRTY;
+			kip->ngarbage++;
+			if (++c->nr_garbage > slots_per_page(c))
+				collect_garbage_slots(c);
+		} else {
+			collect_one_slot(kip, idx);
 		}
 	}
-	/* Could not free this slot. */
-	WARN_ON(1);
-out:
 	mutex_unlock(&c->mutex);
+}
+
+/*
+ * Check given address is on the page of kprobe instruction slots.
+ * This will be used for checking whether the address on a stack
+ * is on a text area or not.
+ */
+bool __is_insn_slot_addr(struct kprobe_insn_cache *c, unsigned long addr)
+{
+	struct kprobe_insn_page *kip;
+	bool ret = false;
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(kip, &c->pages, list) {
+		if (addr >= (unsigned long)kip->insns &&
+		    addr < (unsigned long)kip->insns + PAGE_SIZE) {
+			ret = true;
+			break;
+		}
+	}
+	rcu_read_unlock();
+
+	return ret;
 }
 
 #ifdef CONFIG_OPTPROBES
@@ -546,13 +581,15 @@ static void kprobe_optimizer(struct work_struct *work)
 	do_unoptimize_kprobes();
 
 	/*
-	 * Step 2: Wait for quiesence period to ensure all running interrupts
-	 * are done. Because optprobe may modify multiple instructions
-	 * there is a chance that Nth instruction is interrupted. In that
-	 * case, running interrupt can return to 2nd-Nth byte of jump
-	 * instruction. This wait is for avoiding it.
+	 * Step 2: Wait for quiesence period to ensure all potentially
+	 * preempted tasks to have normally scheduled. Because optprobe
+	 * may modify multiple instructions, there is a chance that Nth
+	 * instruction is preempted. In that case, such tasks can return
+	 * to 2nd-Nth byte of jump instruction. This wait is for avoiding it.
+	 * Note that on non-preemptive kernel, this is transparently converted
+	 * to synchronoze_sched() to wait for all interrupts to have completed.
 	 */
-	synchronize_sched();
+	synchronize_rcu_tasks();
 
 	/* Step 3: Optimize kprobes after quiesence period */
 	do_optimize_kprobes();
@@ -720,13 +757,20 @@ static void kill_optimized_kprobe(struct kprobe *p)
 	arch_remove_optimized_kprobe(op);
 }
 
+static inline
+void __prepare_optimized_kprobe(struct optimized_kprobe *op, struct kprobe *p)
+{
+	if (!kprobe_ftrace(p))
+		arch_prepare_optimized_kprobe(op, p);
+}
+
 /* Try to prepare optimized instructions */
 static void prepare_optimized_kprobe(struct kprobe *p)
 {
 	struct optimized_kprobe *op;
 
 	op = container_of(p, struct optimized_kprobe, kp);
-	arch_prepare_optimized_kprobe(op, p);
+	__prepare_optimized_kprobe(op, p);
 }
 
 /* Allocate new optimized_kprobe and try to prepare optimized instructions */
@@ -740,7 +784,7 @@ static struct kprobe *alloc_aggr_kprobe(struct kprobe *p)
 
 	INIT_LIST_HEAD(&op->list);
 	op->kp.addr = p->addr;
-	arch_prepare_optimized_kprobe(op, p);
+	__prepare_optimized_kprobe(op, p);
 
 	return &op->kp;
 }
@@ -1722,6 +1766,13 @@ void unregister_kprobes(struct kprobe **kps, int num)
 			__unregister_kprobe_bottom(kps[i]);
 }
 EXPORT_SYMBOL_GPL(unregister_kprobes);
+
+int __weak kprobe_exceptions_notify(struct notifier_block *self,
+					unsigned long val, void *data)
+{
+	return NOTIFY_DONE;
+}
+NOKPROBE_SYMBOL(kprobe_exceptions_notify);
 
 static struct notifier_block kprobe_exceptions_nb = {
 	.notifier_call = kprobe_exceptions_notify,
