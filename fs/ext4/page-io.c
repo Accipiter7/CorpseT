@@ -484,8 +484,8 @@ int ext4_bio_write_page(struct ext4_io_submit *io,
 							page->index, gfp_flags);
 			if (IS_ERR(data_page)) {
 				ret = PTR_ERR(data_page);
-				if (ret == -ENOMEM &&
-				    (io->io_bio || wbc->sync_mode == WB_SYNC_ALL)) {
+				if (ret == -ENOMEM && (io->io_bio ||
+					wbc->sync_mode == WB_SYNC_ALL)) {
 					gfp_flags = GFP_NOFS;
 					if (io->io_bio)
 						ext4_io_submit(io);
