@@ -1,0 +1,18 @@
+version: 2.1
+jobs:
+  build:
+    docker:
+      - image: 'accipiter7/thine:latest'
+    steps:
+      - run:  
+          name: Download BuildScript
+          command: |
+             curl -LZOs https://raw.githubusercontent.com/Accipiter7/CorpseT/thine/build.sh
+      - run:  
+          name:  Build-Test 
+          command: bash build.sh
+workflows:
+  version: 2.1
+  cooking:
+    jobs:
+      - build
