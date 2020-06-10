@@ -751,7 +751,7 @@ ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
 KBUILD_CFLAGS   += -Os
 else
 ifeq ($(cc-name),clang)
-KBUILD_CFLAGS	+= -O3 
+KBUILD_CFLAGS	+= -O3 -mtune=cortex-a53 -mcpu=cortex-a53+crc+crypto
 ifdef CONFIG_LLVM_POLLY
 KBUILD_CFLAGS	+= $(call cc-option, -mllvm -polly) \
 		   $(call cc-option, -mllvm -polly-run-dce) \
