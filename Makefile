@@ -750,7 +750,11 @@ endif
 ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
 KBUILD_CFLAGS   += -Os
 else
-KBUILD_CFLAGS   += -O2
+ifeq ($(cc-name),clang)
+KBUILD_CFLAGS	+= -O3
+else
+KBUILD_CFLAGS	+= -O2
+endif
 endif
 
 # This doesn't need 835769/843419 erratum fixes.
