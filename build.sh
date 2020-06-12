@@ -5,8 +5,7 @@ git clone --depth 1 https://github.com/Accipiter7/CorpseT -b thine /root/build/t
 IMG=/root/build/thine/out/arch/arm64/boot/Image.gz-dtb
 TCV=$("/root/build/pclang/bin/clang" --version | head -n 1 | perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//')
 
-export CLANG_PATH=/root/build/pclang/bin
-export PATH=${CLANG_PATH}:${PATH}
+export PATH=/root/build/pclang/bin:${PATH}
 
 function sendInfo() 
 {
@@ -56,7 +55,6 @@ function compile()
 		cd /root/build/thine || exit
 	    START=$(date +"%s%N")
 	    make mido_defconfig &> /build.log
-	    PATH="/root/build/pclang/bin/:${PATH}" \
 		make -j16 &>> /build.log \
 			CC=clang \
 			CROSS_COMPILE=aarch64-linux-gnu- \
