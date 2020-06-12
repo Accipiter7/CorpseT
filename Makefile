@@ -530,15 +530,9 @@ ifneq ($(GCC_TOOLCHAIN),)
 CLANG_FLAGS	+= --gcc-toolchain=$(GCC_TOOLCHAIN)
 endif
 CLANG_FLAGS	+= -Werror=unknown-warning-option
-ifeq ($(ld-name),lld)
-CLANG_FLAGS	+= -fuse-ld=$(shell which $(LD))
-endif
 KBUILD_CPPFLAGS	+= -Qunused-arguments
 KBUILD_CFLAGS	+= $(CLANG_FLAGS)
 KBUILD_AFLAGS	+= $(CLANG_FLAGS) -no-integrated-as
-ifeq ($(ld-name),lld)
-KBUILD_CFLAGS	+= -fuse-ld=lld
-endif
 endif
 
 
@@ -673,6 +667,7 @@ ifeq ($(cc-name),clang)
 ifeq ($(ld-name),lld)
 KBUILD_CFLAGS += -fuse-ld=lld
 KBUILD_LDFLAGS += -O2
+LDFLAGS_vmlinux	+= $(call ld-option, -O2,)
 endif
 endif
 
@@ -874,10 +869,6 @@ else
 # These warnings generated too much noise in a regular build.
 # Use make W=1 to enable them (see scripts/Makefile.extrawarn)
 KBUILD_CFLAGS += $(call cc-disable-warning, unused-but-set-variable)
-endif
-
-ifeq ($(ld-name),lld)
-KBUILD_LDFLAGS += -O2
 endif
 
 KBUILD_CFLAGS += $(call cc-disable-warning, unused-const-variable)
