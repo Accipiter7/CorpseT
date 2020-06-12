@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-mkdir -p /root/build/ak3
+
 git clone --depth 1 https://github.com/Accipiter7/CorpseT -b thine /root/build/thine 
-git clone --depth 1 https://github.com/Accipiter7/AnyKernel3 /root/build/ak3
 
 IMG=/root/build/thine/out/arch/arm64/boot/Image.gz-dtb
 TCV=$("/root/build/pclang/bin/clang" --version | head -n 1 | perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//')
