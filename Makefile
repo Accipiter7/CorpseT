@@ -666,8 +666,8 @@ endif
 ifeq ($(cc-name),clang)
 ifeq ($(ld-name),lld)
 KBUILD_CFLAGS += -fuse-ld=lld
-KBUILD_LDFLAGS += -O2
-LDFLAGS_vmlinux	+= $(call ld-option, -O2,)
+KBUILD_LDFLAGS += -O3
+LDFLAGS_vmlinux	+= $(call ld-option, -O3,)
 endif
 endif
 
